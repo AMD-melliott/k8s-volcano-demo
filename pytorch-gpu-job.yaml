@@ -1,0 +1,49 @@
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: pytorch-distributed
+spec:
+  minAvailable: 2
+  schedulerName: volcano
+  plugins:
+    svc: []
+  tasks:
+    - replicas: 2
+      name: pytorch-worker
+      template:
+        spec:
+          containers:
+            - name: pytorch-worker
+              image: localhost:5000/rocm/pytorch:latest
+              resources:
+                limits:
+                  amd.com/gpu: 1
+                  memory: "8Gi"
+                  cpu: "4"
+              env:
+                - name: PYTHONUNBUFFERED
+                  value: "1"
+                - name: RANK
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.annotations['volcano.sh/task-index']
+                - name: WORLD_SIZE
+                  value: "2"
+                - name: MASTER_ADDR
+                  value: "pytorch-distributed-workers"  # Use the headless service name
+                - name: MASTER_PORT
+                  value: "29500"
+                - name: NCCL_DEBUG
+                  value: "INFO"
+                - name: NCCL_SOCKET_IFNAME
+                  value: "^lo,docker0"
+                - name: HSA_FORCE_FINE_GRAIN_PCIE
+                  value: "1"                  
+              command: ["python", "/app/train.py"]
+              volumeMounts:
+                - name: train-code
+                  mountPath: /app
+          volumes:
+            - name: train-code
+              configMap:
+                name: pytorch-train-code
